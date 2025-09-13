@@ -1,79 +1,57 @@
-import express from 'express';
-import cors from 'cors';
-import 'dotenv/config';
-import fetch from 'node-fetch';
+import express from "express";
+import cors from "cors";
+import mercadopago from "mercadopago";
 
 const app = express();
+app.use(cors());
 app.use(express.json());
 
-// Ajustá CORS a tus orígenes reales (dominio web o scheme de Expo web).
-app.use(cors({
-  origin: [
-    'http://localhost:8081', // expo web local (ajustá tu puerto si difiere)
-    'http://localhost:19006',
-    'https://*'              // mientras probás; luego restringí a tu dominio
-  ]
-}));
+// ⚠️ Para probar rápido: usamos el Access Token directamente.
+// Más adelante lo movemos a una variable de entorno en Render.
+mercadopago.configure({
+  access_token: "APP_USR-7887179924901500-090918-0fd37777b5860ddd03023b96f1973d2d-453670441"
+});
 
-const MP_ACCESS_TOKEN = process.env.MP_ACCESS_TOKEN;
-const MP_API = 'https://api.mercadopago.com';
+// Ruta de salud (para probar que está vivo)
+app.get("/", (req, res) => {
+  res.send("Backend Origen Neri funcionando 🚀");
+});
 
-app.get('/', (_, res) => res.send('OK - Origen Neri MP backend'));
-
-// Crear preferencia
-app.post('/api/mp/checkout', async (req, res) => {
+// Crear preferencia y devolver URL de pago
+app.post("/api/checkout", async (req, res) => {
   try {
-    const { items = [], back_urls } = req.body;
+    const { items, buyer } = req.body;
 
-    // ⚠️ Recomendado: recalcular precios/total del lado servidor para evitar manipulación
-    const mpItems = items.map((it) => ({
-      title: String(it.title),
-      quantity: Number(it.quantity || 1),
-      currency_id: process.env.MP_CURRENCY_ID || 'ARS', // ARS o USD
-      unit_price: Number(it.unit_price),
-      picture_url: it.picture_url || undefined,
-    }));
-
-    const body = {
-      items: mpItems,
-      back_urls,                     // { success, failure, pending } — tus deep links
-      auto_return: 'approved',
-      statement_descriptor: 'ORIGEN NERI',
-      notification_url: process.env.NOTIFICATION_URL || undefined, // webhook (opcional)
+    const preference = {
+      items: (items || []).map((i) => ({
+        title: i.title,
+        quantity: Number(i.quantity || 1),
+        unit_price: Number(i.unit_price || 0),
+        currency_id: "ARS",
+      })),
+      payer: {
+        name: buyer?.name || "",
+        email: buyer?.email || "",
+      },
+      back_urls: {
+        success: "https://origenneri.com/success",
+        failure: "https://origenneri.com/failure",
+        pending: "https://origenneri.com/pending",
+      },
+      auto_return: "approved",
+      statement_descriptor: "ORIGEN NERI",
     };
 
-    const r = await fetch(`${MP_API}/checkout/preferences`, {
-      method: 'POST',
-      headers: {
-        Authorization: `Bearer ${MP_ACCESS_TOKEN}`,
-        'Content-Type': 'application/json',
-      },
-      body: JSON.stringify(body),
-    });
-    const data = await r.json();
-
-    if (!r.ok) {
-      console.error('MP error:', data);
-      return res.status(400).send(data);
-    }
-
-    // init_point (prod) o sandbox_init_point (modo test)
-    return res.json({
-      id: data.id,
-      init_point: data.init_point || data.sandbox_init_point
-    });
-  } catch (e) {
-    console.error(e);
-    res.status(500).send({ error: 'internal_error' });
+    const result = await mercadopago.preferences.create(preference);
+    res.json({ url: result.body.init_point });
+  } catch (err) {
+    console.error("MP error:", err?.message || err);
+    res.status(500).json({ error: "Error creando preferencia" });
   }
 });
 
-// (Opcional) Webhook de notificaciones para confirmar pagos y disparar emails
-app.post('/api/mp/webhook', (req, res) => {
-  // Verificá req.body, topic/type y consultá /v1/payments/:id
-  // Luego enviá emails (cliente y ustedes) con Nodemailer/Sendgrid, etc.
-  res.sendStatus(200);
+// Render usa este puerto
+const PORT = process.env.PORT || 10000;
+app.listen(PORT, () => {
+  console.log(`Servidor escuchando en puerto ${PORT}`);
 });
-
-const PORT = process.env.PORT || 3001;
-app.listen(PORT, () => console.log(`MP backend listening on :${PORT}`));
