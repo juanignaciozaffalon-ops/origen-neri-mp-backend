@@ -19,29 +19,33 @@ app.get("/", (req, res) => {
 
 app.post("/api/checkout", async (req, res) => {
   try {
-    const { items = [], buyer = {} } = req.body;
+    // 👉 ahora esperamos "payer" (no buyer)
+    const { items = [], payer = {} } = req.body;
 
     const preference = {
       items: items.map((it) => ({
         title: String(it.title),
         quantity: Number(it.quantity),
         unit_price: Number(it.unit_price),
-        currency_id: "ARS"
+        currency_id: "ARS",
       })),
       payer: {
-        name: buyer.name || "",
-        email: buyer.email || ""
+        name: payer.name || "",
+        email: String(payer.email || "").toLowerCase().trim(), // 👈 limpio y aseguro string
+        identification: payer.identification || {},
+        phone: payer.phone || {},
+        address: payer.address || {},
       },
       back_urls: {
         success: "https://origenneri.com/success",
         failure: "https://origenneri.com/failure",
-        pending: "https://origenneri.com/pending"
+        pending: "https://origenneri.com/pending",
       },
-      auto_return: "approved"
+      auto_return: "approved",
     };
 
     const result = await mercadopago.preferences.create(preference);
-    return res.json({ url: result.body.init_point });
+    return res.json({ init_point: result.body.init_point });
   } catch (err) {
     console.error("Error en /api/checkout:", err);
     res.status(500).json({ error: "Error al crear la preferencia" });
