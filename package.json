@@ -6,12 +6,9 @@
   "scripts": {
     "start": "node server.mjs"
   },
-  "engines": {
-    "node": ">=18"
-  },
   "dependencies": {
     "cors": "^2.8.5",
     "express": "^4.19.2",
-    "mercadopago": "^1.5.18"
+    "mercadopago": "^1.5.17"
   }
 }
