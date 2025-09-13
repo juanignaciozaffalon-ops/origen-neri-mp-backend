@@ -1,57 +1,58 @@
-import express from "express";
-import cors from "cors";
-import mercadopago from "mercadopago";
+const express = require('express');
+const cors = require('cors');
+const bodyParser = require('body-parser');
+const mercadopago = require('mercadopago');
 
 const app = express();
+const PORT = process.env.PORT || 10000;
+
+// Middleware
 app.use(cors());
-app.use(express.json());
+app.use(bodyParser.json());
 
-// ⚠️ Para probar rápido: usamos el Access Token directamente.
-// Más adelante lo movemos a una variable de entorno en Render.
+// Configura Mercado Pago con tu access token
 mercadopago.configure({
-  access_token: "APP_USR-7887179924901500-090918-0fd37777b5860ddd03023b96f1973d2d-453670441"
+  access_token: 'APP_USR-7887179924901500-090918-0fd37777b5860ddd03023b96f1973d2d-453670441'
 });
 
-// Ruta de salud (para probar que está vivo)
-app.get("/", (req, res) => {
-  res.send("Backend Origen Neri funcionando 🚀");
+// Ruta de prueba
+app.get('/', (req, res) => {
+  res.send('Backend de Origen Neri con Mercado Pago funcionando 🚀');
 });
 
-// Crear preferencia y devolver URL de pago
-app.post("/api/checkout", async (req, res) => {
+// Ruta para checkout
+app.post('/api/checkout', async (req, res) => {
   try {
     const { items, buyer } = req.body;
 
     const preference = {
-      items: (items || []).map((i) => ({
+      items: items.map(i => ({
         title: i.title,
-        quantity: Number(i.quantity || 1),
-        unit_price: Number(i.unit_price || 0),
-        currency_id: "ARS",
+        quantity: i.quantity,
+        unit_price: i.unit_price,
+        currency_id: 'ARS',
       })),
       payer: {
-        name: buyer?.name || "",
-        email: buyer?.email || "",
+        name: buyer.name,
+        email: buyer.email,
       },
       back_urls: {
-        success: "https://origenneri.com/success",
-        failure: "https://origenneri.com/failure",
-        pending: "https://origenneri.com/pending",
+        success: "https://origenneri1.odoo.com/success",
+        failure: "https://origenneri1.odoo.com/failure",
+        pending: "https://origenneri1.odoo.com/pending",
       },
       auto_return: "approved",
-      statement_descriptor: "ORIGEN NERI",
     };
 
-    const result = await mercadopago.preferences.create(preference);
-    res.json({ url: result.body.init_point });
-  } catch (err) {
-    console.error("MP error:", err?.message || err);
-    res.status(500).json({ error: "Error creando preferencia" });
+    const response = await mercadopago.preferences.create(preference);
+    res.json({ id: response.body.id, init_point: response.body.init_point });
+  } catch (error) {
+    console.error(error);
+    res.status(500).json({ error: error.message });
   }
 });
 
-// Render usa este puerto
-const PORT = process.env.PORT || 10000;
+// Inicia el servidor
 app.listen(PORT, () => {
   console.log(`Servidor escuchando en puerto ${PORT}`);
 });
