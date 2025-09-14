@@ -1,3 +1,4 @@
+// index.js (backend completo)
 import express from "express";
 import cors from "cors";
 import mercadopago from "mercadopago";
@@ -23,11 +24,7 @@ const toARSItem = (it) => ({
 });
 
 const cleanEmail = (e) => String(e || "").trim().toLowerCase();
-
-/** Devuelve SOLO dígitos (sin +, espacios, guiones) */
 const onlyDigits = (s) => String(s || "").replace(/\D/g, "");
-
-/** MP (sdk que estás usando) valida `payer.phone.number` como NUMBER */
 const phoneAsNumber = (s) => {
   const digits = onlyDigits(s);
   if (!digits) return null;
@@ -43,39 +40,34 @@ app.get("/", (_req, res) => {
 app.post("/api/checkout", async (req, res) => {
   try {
     const body = req.body || {};
-
-    // Soportá tanto body.items/body.payer como body.items/body.buyer (por si quedó viejo en el front)
     const itemsIn = Array.isArray(body.items) ? body.items : [];
     const payerIn = body.payer || body.buyer || {};
 
     const items = itemsIn.length
       ? itemsIn.map(toARSItem)
       : [
-          {
-            title: "Compra Origen Neri",
-            quantity: 1,
-            currency_id: "ARS",
-            unit_price: 1,
-          },
+          { title: "Compra Origen Neri", quantity: 1, currency_id: "ARS", unit_price: 1 },
         ];
 
-    // --- Armo payer limpio ---
     const email = cleanEmail(payerIn.email);
     const phoneNumber = phoneAsNumber(payerIn.phone?.number ?? payerIn.phone);
 
+    // Validación simple de email
+    const emailOk = /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email);
+    if (!emailOk) {
+      return res.status(400).json({ error: "Email inválido. Formato usuario@dominio.com" });
+    }
+
     const payer = {
       name: String(payerIn.name || "").trim(),
-      email, // MP valida esto
+      email,
       identification: payerIn.identification
         ? {
             type: String(payerIn.identification.type || "DNI"),
             number: onlyDigits(payerIn.identification.number),
           }
         : undefined,
-      // Solo incluyo `phone` si tengo un número válido
-      ...(phoneNumber
-        ? { phone: { number: phoneNumber } }
-        : {}),
+      ...(phoneNumber ? { phone: { number: phoneNumber } } : {}),
       address: payerIn.address
         ? {
             street_name: String(payerIn.address.street_name || ""),
@@ -84,22 +76,15 @@ app.post("/api/checkout", async (req, res) => {
         : undefined,
     };
 
-    // Validación rápida de email del lado del server (si viene mal, devolvemos 400)
-    const emailOk = /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email);
-    if (!emailOk) {
-      return res
-        .status(400)
-        .json({ error: "Email inválido. Debe tener formato usuario@dominio.com" });
-    }
-
+    // 🔑 ACÁ está la CLAVE: deep links a TU APP
     const preference = {
       items,
       payer,
       metadata: body.metadata || {},
-      back_urls: body.back_urls || {
-        success: "https://origenneri.com/success",
-        failure: "https://origenneri.com/failure",
-        pending: "https://origenneri.com/pending",
+      back_urls: {
+        success: "origenneri://mp-return?status=approved",
+        failure: "origenneri://mp-return?status=failure",
+        pending: "origenneri://mp-return?status=pending",
       },
       auto_return: "approved",
     };
